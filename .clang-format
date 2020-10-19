@@ -1,0 +1,33 @@
+﻿---
+BasedOnStyle: Google
+AccessModifierOffset: -4
+AlignAfterOpenBracket: Align
+AlignConsecutiveMacros: 'true'
+AlignConsecutiveAssignments: 'true'
+AlignConsecutiveDeclarations: 'true'
+AlignEscapedNewlines: Left
+AlignOperands: 'true'
+AlignTrailingComments: 'true'
+AllowShortBlocksOnASingleLine: 'true'
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLambdasOnASingleLine: Inline
+AllowShortLoopsOnASingleLine: 'false'
+AlwaysBreakTemplateDeclarations: 'Yes'
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterNamespace:  false
+  AfterClass:      true
+  AfterStruct:     true # false
+  AfterUnion:      true # false
+  AfterFunction:   true
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+ColumnLimit: '100'
+IndentPPDirectives: AfterHash
+IndentWidth: 4
+SortIncludes: 'false'
+TabWidth:        4
+UseTab:          Never
+...

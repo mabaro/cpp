@@ -1,0 +1,17 @@
+# Ignore build-related files
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+
+# Ignore jetbrains IDE files
+.idea/
+
+# Ignore dependency graph
+graph/
+
+# Ignore WIP externals
+extern/gal-master/
+extern/gatl-master/
+extern/klein-master/
+extern/versor-devel/
