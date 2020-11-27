@@ -1,5 +1,11 @@
 /*
 compile with -std=c++17 and ensure the compiler supports coroutines (i.e., gcc with coroutines)
+
+https://dev.to/dwd/coroutines-in-c-2i5b
+https://medium.com/pranayaggarwal25/coroutines-in-cpp-15afdf88e17e
+https://lewissbaker.github.io/2018/09/05/understanding-the-promise-type
+https://devblogs.microsoft.com/oldnewthing/20191209-00/?p=103195
+
 */
 
 #include <future>
