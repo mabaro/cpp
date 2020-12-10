@@ -2,6 +2,7 @@
 https://fasterthanli.me/articles/working-with-strings-in-rust
 https://www.unicode.mayastudios.com/examples/utf8.html
 http://www.columbia.edu/~fdc/utf8/
+https://www.branah.com/unicode-converter
 */
 #include <cstdio>
 #include <cstdint>
@@ -14,6 +15,165 @@ http://www.columbia.edu/~fdc/utf8/
  
 namespace detail
 {
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+///@return utf32 codepoint for the first utf8 codepoint found, uint32_t(-1) when invalid
+uint32_t utf8_to_utf32(const uint8_t* i_utf8Str, size_t* o_numBytes = nullptr)
+{
+	constexpr uint32_t lowest6bit0 = 0b000000000000000000111111;
+	constexpr uint32_t lowest6bit1 = 0b000000000000111111000000;
+	constexpr uint32_t lowest6bit2 = 0b000000111111000000000000;
+
+	const uint8_t* srcPtr = i_utf8Str;
+	const uint8_t c = *srcPtr++;
+
+	auto setNumBytes = [o_numBytes](size_t count) {
+		if (o_numBytes)
+		{
+			*o_numBytes = count;
+		}
+	};
+
+	uint32_t output(-1);
+
+	if (!(c & 0b10000000))        // 1-byte sequence
+	{
+		output = (uint32_t)c;
+		setNumBytes(1);
+	}
+	else if (c >> 5 == 0b110)     // 2-byte sequence --> 0b110xxxxx10xxxxxx
+	{
+		const uint32_t b1 = (uint32_t)c;
+		const uint32_t b2 = (uint32_t) * (srcPtr++);
+		const uint32_t highestByte = 0b0000011111000000;
+
+		output = ((b1 << 6) & highestByte) | ((b2 << 0) & lowest6bit0);
+		setNumBytes(2);
+	}
+	else if (c >> 4 == 0b1110)    // 3-byte sequence --> 0b1110xxxx10xxxxxx10xxxxxx
+	{
+		const uint32_t b1 = (uint32_t)c;
+		const uint32_t b2 = (uint32_t) * (srcPtr++);
+		const uint32_t b3 = (uint32_t) * (srcPtr++);
+		const uint32_t highestByte = 0b1111000000000000;
+
+		output = ((b1 << 12) & highestByte) | ((b2 << 6) & lowest6bit1) | ((b3 << 0) & lowest6bit0);
+		setNumBytes(3);
+	}
+	else if ((c >> 3) == 0b11110) // 4-byte sequence --> 0b11110xxx10xxxxxx10xxxxxx10xxxxxx
+	{
+		const uint32_t b1 = (uint32_t)c;
+		const uint32_t b2 = (uint32_t) * (srcPtr++);
+		const uint32_t b3 = (uint32_t) * (srcPtr++);
+		const uint32_t b4 = (uint32_t) * (srcPtr++);
+		const uint32_t highestByte = 0b111000000000000000000;
+
+		output = ((b1 << 18) & highestByte) | ((b2 << 12) & lowest6bit2) | ((b3 << 6) & lowest6bit1) | ((b4 << 0) & lowest6bit0);
+		setNumBytes(4);
+	}
+	else
+	{
+		assert(false);
+        std::cerr << "invalid codepoint: " <<  i_utf8Str << std::endl;
+	}
+
+	return output;
+}
+
+///@return numBytes of the utf8 code, = 0 if the codepoint is invalid, = -numBytes if the output length is less than required to decode
+int32_t utf32_to_utf8(const uint32_t codePoint, char* o_src, const size_t i_srcLen)
+{
+	const uint32_t mask1 = (1 << 7) - 1;  //7bit
+	const uint32_t mask2 = (1 << 11) - 1; //11bit
+	const uint32_t mask3 = (1 << 16) - 1; //16bit
+	const uint32_t mask4 = (1 << 21) - 1; //21bit
+	const uint32_t k_continuationMarker = 0b10000000;
+	const uint32_t k_6bitMask           = 0b00111111;
+
+	int32_t numBytes = 0;
+
+	if (codePoint > 0x1FFFFF)
+	{
+        std::cerr << "invalid utf32 codepoint: " << codePoint << std::endl;
+		assert(false);
+		return 0;
+	}
+
+	if (!(codePoint & ~0b1111111))
+	{
+        o_src[0] = codePoint;
+		numBytes = 1;
+	}
+	else if (!(codePoint & ~mask2)) // 0b110xxxxx
+	{
+		numBytes = 2;
+		if (i_srcLen < numBytes)
+		{
+            std::cerr << i_srcLen <<  numBytes << std::endl;
+			return -numBytes;
+		}
+		o_src[0] = 0b11000000 | (0b00011111 & (codePoint >> 6));
+		o_src[1] = k_continuationMarker | (k_6bitMask & (codePoint));
+	}
+	else if (!(codePoint & ~mask3)) // 0b1110xxxx
+	{
+		numBytes = 3;
+		if (i_srcLen < numBytes)
+		{
+			return -numBytes;
+		}
+		o_src[0] = 0b11100000 | (0b00001111 & (codePoint >> 12));
+		o_src[1] = k_continuationMarker | (k_6bitMask & (codePoint >> 6));
+		o_src[2] = k_continuationMarker | (k_6bitMask & (codePoint));
+	}
+	else if (!(codePoint & ~mask4)) // 0b11110xxx
+	{
+		numBytes = 4;
+		if (i_srcLen < numBytes)
+		{
+			return -numBytes;
+		}
+
+		o_src[0] = 0b11110000 | (0b00000111 & (codePoint >> 18));
+		o_src[1] = k_continuationMarker | (k_6bitMask & (codePoint >> 12));
+		o_src[2] = k_continuationMarker | (k_6bitMask & (codePoint >> 6));
+		o_src[3] = k_continuationMarker | (k_6bitMask & (codePoint));
+	}
+
+	return numBytes;
+}
+
+///@return num bytes of next code
+size_t peek_utf8(const uint8_t* i_str)
+{
+	const uint8_t  c = *i_str;
+
+	if (!(c & 0b10000000))        // 1-byte sequence
+	{
+		return 1;
+	}
+	else if (c >> 5 == 0b110)     // 2-byte sequence --> 0b110xxxxx10xxxxxx
+	{
+		return 2;
+	}
+	else if (c >> 4 == 0b1110)    // 3-byte sequence --> 0b1110xxxx10xxxxxx10xxxxxx
+	{
+		return 3;
+	}
+	else if ((c >> 3) == 0b11110) // 4-byte sequence --> 0b11110xxx10xxxxxx10xxxxxx10xxxxxx
+	{
+		return 4;
+	}
+	else
+	{
+		assert(false);// "invalid codepoint: {}", *i_str
+	}
+
+	return 0;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 bool encode_utf8(const uint32_t codePoint, std::string& output) {
     const uint32_t mask1 = (1 << 7) - 1; //7bit
     const uint32_t mask2 = (1 << 11) - 1; //11bit
@@ -55,10 +215,12 @@ bool encode_utf8(const uint32_t codePoint, std::string& output) {
 
     return true;
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 }//detail
 
 
-bool encode_utf8(const std::vector<uint32_t>& src, std::string& output) {
+bool encode_utf32_to_utf8(const std::vector<uint32_t>& src, std::string& output) {
     output.reserve(src.size());
 
     bool isValid = true;
@@ -75,66 +237,33 @@ bool encode_utf8(const std::vector<uint32_t>& src, std::string& output) {
  }
 
 
-bool decode_utf8(const char *src, std::vector<uint32_t>& dst) {
+bool encode_utf8_to_utf32(const char *src, std::vector<uint32_t>& dst) {
     const uint8_t* srcPtr = (uint8_t*)src;
 
     while (*srcPtr != 0) {
-        const uint8_t c = *srcPtr++;
-
-        uint32_t scalar;
-
-        if (!(c & 0b10000000)) {
-            // 1-byte sequence
-            scalar = (uint32_t) c;
-        } else if ((c >> 3) == 0b11110) {
-           // 4-byte sequence --> 0b11110xxx10xxxxxx10xxxxxx10xxxxxx
-            const uint32_t b1 = (uint32_t) c;
-            const uint32_t b2 = (uint32_t) *(srcPtr++);
-            const uint32_t b3 = (uint32_t) *(srcPtr++);
-            const uint32_t b4 = (uint32_t) *(srcPtr++);
-            const uint32_t mask1 = 0b111000000000000000000;
-            const uint32_t mask2 = 0b000111111000000000000;
-            const uint32_t mask3 = 0b000000000111111000000;
-            const uint32_t mask4 = 0b000000000000000111111;
-
-            scalar = ((b1 << 18) & mask1) | ((b2 << 12) & mask2) | ((b3 << 6) & mask3) | ((b4 << 0) & mask4);
-        } else if (c >> 4 == 0b1110) {
-            // 3-byte sequence --> 0b1110xxxx10xxxxxx10xxxxxx
-            uint32_t b1 = (uint32_t) c;
-            uint32_t b2 = (uint32_t) *(srcPtr++);
-            uint32_t b3 = (uint32_t) *(srcPtr++);
-            uint32_t mask1 = 0b1111000000000000;
-            uint32_t mask2 = 0b0000111111000000;
-            uint32_t mask3 = 0b0000000000111111;
-
-            scalar = ((b1 << 12) & mask1) | ((b2 << 6) & mask2) | ((b3 << 0) & mask3);
-        } else if (c >> 5 ==  0b110) {
-            // 2-byte sequence --> 0b110xxxxx10xxxxxx
-            uint32_t b1 = (uint32_t) c;
-            uint32_t b2 = (uint32_t) *(srcPtr++);
-            uint32_t mask1 = 0b0000011111000000;
-            uint32_t mask2 = 0b0000000000111111;
-
-            scalar = ((b1 << 6) & mask1) | ((b2 << 0) & mask2);
-        }
-        else {
-            assert(false);
-        }
+        size_t numBytes;
+        const uint32_t scalar = detail::utf8_to_utf32(srcPtr, &numBytes);
         dst.push_back(scalar);
+
+        srcPtr += numBytes;
     }
 
     return true;
 }
 
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////
+
 int main(int argc, char **argv) {
-    if (0)
+    if (1)
     {// simple multi-byte test
         std::string temp = "𤭢€¢$"; //4,3,2,1bytes
 
         std::cout << "original: " << temp << std::endl;
 
         std::vector<uint32_t> decoded;
-        bool isOk = decode_utf8(temp.c_str(), decoded);
+        bool isOk = encode_utf8_to_utf32(temp.c_str(), decoded);
         std::cout << "decoded : ";
         for(uint32_t u32 : decoded)
         {
@@ -143,16 +272,10 @@ int main(int argc, char **argv) {
         std::cout << std::endl;
 
         std::string encoded;
-        //isOk = detail::encode_utf8(decoded[0], encoded);
-        isOk = encode_utf8(decoded, encoded);
+        isOk = encode_utf32_to_utf8(decoded, encoded);
         std::cout << "encoded : " << encoded << std::endl;
         assert(encoded.size() == temp.size());
         assert(encoded == temp);
-
-        //for(char& c : encoded) std::cout << std::bitset<8>(c);
-        //std::cout << std::endl;
-
-        return 0;
     }
 
     std::pair<std::string, std::string> samples[] = {
@@ -345,7 +468,7 @@ int main(int argc, char **argv) {
         std::cout << "-> original: " <<  inputStr << std::endl;
         
         scalars.clear();
-        if (decode_utf8(inputStr.c_str(), scalars) == false)
+        if (encode_utf8_to_utf32(inputStr.c_str(), scalars) == false)
         {
             return -1;
         }
@@ -355,13 +478,31 @@ int main(int argc, char **argv) {
             if (codePoint == 0) {
                 break;
             }
-            printf("U+%04X ", codePoint);
+            //printf("U+%04X ", codePoint);
         }
-        printf("\n");
+        //printf("\n");
         std::string temp;
-        encode_utf8(scalars, temp);
-        std::cout <<"<- encoded: " << temp << std::endl;
+        encode_utf32_to_utf8(scalars, temp);
+        std::cout <<"-> decoded:  " << temp << std::endl;
+        std::cout << std::endl;
+    }
 
+    {
+        const std::string str="Argélia";
+        std::cout << "peeking from: " << str << std::endl;
+
+        const char* charPtr = str.c_str();
+        size_t pos = 0;
+        uint32_t utf32;
+        size_t numBytes = 0;
+        while((utf32 = detail::utf8_to_utf32(reinterpret_cast<const uint8_t*>(charPtr), &numBytes)) != uint32_t(-1))
+        {
+            std::string utf8; utf8.resize(4);
+            const size_t numBytes = detail::utf32_to_utf8(utf32, &utf8[0], utf8.size());
+            std::cout << "pos: " << pos
+                << " u32(#"<< numBytes <<"): " << utf32
+                << " -> utf8: " << utf8 << std::endl;
+        }
     }
 
     return 0;
