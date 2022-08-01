@@ -1,3 +1,6 @@
+/**
+https://www.foonathan.net/2021/07/concepts-structural-nominal/
+**/
 template <typename T>
 concept equality_comparable = requires (T obj) {
   { obj == obj } -> std::same_as<bool>;
