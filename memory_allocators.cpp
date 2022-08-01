@@ -1,3 +1,6 @@
+/**
+https://en.cppreference.com/w/cpp/memory/align
+**/
 #include <vector>
 #include <algorithm> // std::find
 #include <numeric> // std::accumulate
