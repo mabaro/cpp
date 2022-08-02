@@ -18,3 +18,5 @@ include_directories(${DIVISION_HEADERS_DIR})
 
 add_subdirectory(src)
 add_subdirectory(test)
+
+#https://github.com/doctest/doctest.git
